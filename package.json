@@ -1,0 +1,23 @@
+{
+  "name": "agentcore-cdk-steps",
+  "version": "0.1.0",
+  "bin": {
+    "agentcore-cdk-steps": "bin/agentcore-cdk-steps.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "aws-cdk": "2.1100.1",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@aws-cdk/aws-bedrock-agentcore-alpha": "2.233.0-alpha.0",
+    "aws-cdk-lib": "2.233.0",
+    "constructs": "^10.0.0"
+  }
+}
