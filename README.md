@@ -115,6 +115,10 @@ git diff v0.2-tool-use v0.3-code-interpreter -- agentcore-runtime/main.py
 ### 初回セットアップ
 
 ```bash
+# 0. リポジトリをクローン
+git clone https://github.com/mamezou/agentcore-cdk-steps.git
+cd agentcore-cdk-steps
+
 # 1. 依存関係インストール
 npm install
 cd frontend && npm install && cd ..
