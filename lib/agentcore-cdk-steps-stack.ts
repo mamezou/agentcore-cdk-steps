@@ -49,16 +49,6 @@ export class AgentCoreCdkStepsStack extends cdk.Stack {
       ]
     }));
 
-    // Service Quotas API へのアクセス権限
-    agentRuntime.role.addToPrincipalPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'servicequotas:GetServiceQuota',
-        'servicequotas:ListServiceQuotas'
-      ],
-      resources: ['*']
-    }));
-
     // Cognito User Pool
     const userPool = new cognito.UserPool(this, 'UserPool', {
       userPoolName: `agentcore-steps-${props.environment}`,

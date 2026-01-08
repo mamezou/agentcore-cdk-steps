@@ -1,15 +1,12 @@
 """
-Agent Core Runtime with Bedrock Claude + Tool Use integration
+Agent Core Runtime with Bedrock Claude integration
 
 AWS Bedrock Agent Core Runtime の実装
 - Claude Sonnet 4.5 (JP Inference Profile) との連携
-- Tool Use (Function Calling) による外部API連携
-- Built-in Tools (Code Interpreter) の活用
 - ストリーミングレスポンス対応
 """
 import json
 import logging
-from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -23,7 +20,6 @@ app = BedrockAgentCoreApp()
 
 # AWS クライアントの初期化
 bedrock_client = boto3.client('bedrock-runtime', region_name='ap-northeast-1')
-service_quotas_client = boto3.client('service-quotas', region_name='ap-northeast-1')
 
 # Claude モデル設定 (JP Inference Profile)
 MODEL_ID = "jp.anthropic.claude-sonnet-4-5-20250929-v1:0"
@@ -31,201 +27,12 @@ MODEL_ID = "jp.anthropic.claude-sonnet-4-5-20250929-v1:0"
 # システムプロンプト
 SYSTEM_PROMPT = """あなたは AWS のエキスパートアシスタントです。
 AWS サービスの制限、クォータ、ベストプラクティスについてお答えします。
-日本語で丁寧に回答してください。
-
-利用可能なツール:
-- get_aws_service_info: AWS Service Quotas API からリアルタイムでクォータ情報を取得"""
-
-# Tool definitions
-TOOLS = [
-    {
-        "name": "get_aws_service_info",
-        "description": """AWS Service Quotas API からサービスのクォータ情報をリアルタイムで取得します。
-このアカウントの現在の設定値を返します。
-対応サービス: Lambda, S3, DynamoDB, API Gateway, SQS, SNS""",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "service_name": {
-                    "type": "string",
-                    "description": "AWS サービス名 (例: lambda, s3, dynamodb, api-gateway, sqs, sns)"
-                }
-            },
-            "required": ["service_name"]
-        }
-    }
-]
-
-
-# =============================================================================
-# Service Quotas Mapping
-# =============================================================================
-
-SERVICE_QUOTAS_MAPPING = {
-    "lambda": {
-        "service_code": "lambda",
-        "quotas": [
-            ("L-B99A9384", "同時実行数"),
-            ("L-E49FF7B8", "デプロイパッケージ (解凍後)"),
-            ("L-75F48B05", "デプロイパッケージ (直接アップロード)"),
-            ("L-2ACBD22F", "関数とレイヤーのストレージ"),
-            ("L-5C4B2C97", "同期ペイロードサイズ"),
-            ("L-7C0F49F9", "非同期ペイロードサイズ"),
-            ("L-6581F036", "環境変数サイズ"),
-        ]
-    },
-    "dynamodb": {
-        "service_code": "dynamodb",
-        "quotas": [
-            ("L-F98FE922", "テーブル数上限"),
-            ("L-F7858A77", "テーブルあたりのGSI数"),
-            ("L-AB614373", "テーブルレベル書き込みスループット"),
-            ("L-CF0CBE56", "テーブルレベル読み取りスループット"),
-            ("L-34F8CCC8", "アカウントレベル書き込みスループット"),
-            ("L-34F6A552", "アカウントレベル読み取りスループット"),
-        ]
-    },
-    "s3": {
-        "service_code": "s3",
-        "quotas": [
-            ("L-89BABEE8", "オブジェクトサイズ"),
-            ("L-B461D596", "レプリケーションルール数"),
-        ]
-    },
-    "api-gateway": {
-        "service_code": "apigateway",
-        "quotas": [
-            ("L-AA0FF27B", "リージョナルAPI数"),
-            ("L-01C8A9E0", "REST/WebSocket APIあたりのリソース数"),
-            ("L-46624B39", "APIペイロードサイズ"),
-            ("L-E5AE38E3", "統合タイムアウト"),
-            ("L-1D180A63", "APIキー数"),
-        ]
-    },
-    "sqs": {
-        "service_code": "sqs",
-        "quotas": [
-            ("L-1F7A8FA6", "キュー数"),
-        ]
-    },
-    "sns": {
-        "service_code": "sns",
-        "quotas": [
-            ("L-61103206", "トピック数"),
-            ("L-C6E88E4A", "サブスクリプション数/トピック"),
-        ]
-    },
-}
-
-
-# =============================================================================
-# Tool Functions
-# =============================================================================
-
-def fetch_quotas_from_api(service_key: str) -> dict:
-    """Fetch quotas from Service Quotas API"""
-    if service_key not in SERVICE_QUOTAS_MAPPING:
-        return None
-
-    mapping = SERVICE_QUOTAS_MAPPING[service_key]
-    service_code = mapping["service_code"]
-    quotas = {}
-
-    for quota_code, quota_name_ja in mapping["quotas"]:
-        try:
-            response = service_quotas_client.get_service_quota(
-                ServiceCode=service_code,
-                QuotaCode=quota_code
-            )
-            quota = response.get("Quota", {})
-            value = quota.get("Value", "N/A")
-            unit = quota.get("Unit", "")
-
-            # Format value with unit
-            if unit == "Megabytes":
-                quotas[quota_name_ja] = f"{value} MB"
-            elif unit == "Gigabytes":
-                quotas[quota_name_ja] = f"{value} GB"
-            elif unit == "Terabytes":
-                quotas[quota_name_ja] = f"{value} TB"
-            elif unit == "Kilobytes":
-                quotas[quota_name_ja] = f"{value} KB"
-            elif unit == "Milliseconds":
-                quotas[quota_name_ja] = f"{value} ms"
-            elif unit == "Count":
-                quotas[quota_name_ja] = f"{int(value)}"
-            else:
-                quotas[quota_name_ja] = f"{value}" if unit == "None" else f"{value} {unit}"
-        except ClientError as e:
-            logger.warning(f"Failed to fetch quota {quota_code}: {e}")
-        except Exception as e:
-            logger.warning(f"Unexpected error fetching quota {quota_code}: {e}")
-
-    return quotas if quotas else None
-
-
-def get_aws_service_info(service_name: str) -> dict:
-    """Get AWS service quota information from Service Quotas API"""
-    service_key = service_name.lower().replace(" ", "-").replace("_", "-")
-
-    # Normalize common variations
-    service_mapping = {
-        "apigateway": "api-gateway",
-        "api gateway": "api-gateway",
-    }
-    service_key = service_mapping.get(service_key, service_key)
-
-    api_quotas = fetch_quotas_from_api(service_key)
-
-    if api_quotas:
-        return {
-            "service": service_key,
-            "source": "Service Quotas API",
-            "quotas": api_quotas
-        }
-    else:
-        return {
-            "error": f"サービス '{service_name}' のクォータ情報を取得できませんでした。対応サービス: {', '.join(SERVICE_QUOTAS_MAPPING.keys())}"
-        }
-
-
-def execute_tool(tool_name: str, tool_input: dict) -> Any:
-    """Execute a tool and return the result"""
-    logger.info(f"Executing tool: {tool_name}")
-
-    if tool_name == "get_aws_service_info":
-        return get_aws_service_info(service_name=tool_input.get("service_name", ""))
-    else:
-        return {"error": f"Unknown tool: {tool_name}"}
+日本語で丁寧に回答してください。"""
 
 
 # =============================================================================
 # Claude API Functions
 # =============================================================================
-
-def call_claude(messages: list, tools: list = None) -> dict:
-    """Call Bedrock Claude with messages and optional tools"""
-    try:
-        request_body = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 4096,
-            "system": SYSTEM_PROMPT,
-            "messages": messages
-        }
-        if tools:
-            request_body["tools"] = tools
-
-        response = bedrock_client.invoke_model(
-            modelId=MODEL_ID,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(request_body)
-        )
-        return json.loads(response['body'].read())
-    except ClientError as e:
-        logger.error(f"Bedrock API error: {e}")
-        raise
-
 
 def call_claude_streaming(messages: list):
     """Call Bedrock Claude with streaming response"""
@@ -259,61 +66,6 @@ def call_claude_streaming(messages: list):
         raise
 
 
-def process_conversation_streaming(prompt: str, history: list = None):
-    """Process conversation with streaming response and tool use support"""
-    messages = []
-    if history:
-        for msg in history:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role in ["user", "assistant"] and content:
-                messages.append({"role": role, "content": content})
-
-    messages.append({"role": "user", "content": prompt})
-
-    response = call_claude(messages, TOOLS)
-    logger.info(f"Initial response stop_reason: {response.get('stop_reason')}")
-
-    if response.get("stop_reason") != "tool_use":
-        for chunk in call_claude_streaming(messages):
-            yield chunk
-        return
-
-    # Handle tool use loop
-    max_iterations = 5
-    iteration = 0
-
-    while response.get("stop_reason") == "tool_use" and iteration < max_iterations:
-        iteration += 1
-        logger.info(f"Tool use iteration {iteration}")
-
-        assistant_content = response.get("content", [])
-        messages.append({"role": "assistant", "content": assistant_content})
-
-        tool_results = []
-        for block in assistant_content:
-            if block.get("type") == "tool_use":
-                tool_name = block.get("name")
-                tool_input = block.get("input", {})
-                tool_id = block.get("id")
-
-                yield f"[ツール実行中: {tool_name}]\n"
-
-                result = execute_tool(tool_name, tool_input)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tool_id,
-                    "content": json.dumps(result, ensure_ascii=False)
-                })
-
-        messages.append({"role": "user", "content": tool_results})
-        response = call_claude(messages, TOOLS)
-
-    # Stream final response
-    for chunk in call_claude_streaming(messages):
-        yield chunk
-
-
 # =============================================================================
 # Agent Handler
 # =============================================================================
@@ -331,7 +83,19 @@ async def agent_handler(request: dict):
         return
 
     try:
-        for chunk in process_conversation_streaming(prompt, history):
+        # Build messages from history
+        messages = []
+        if history:
+            for msg in history:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ["user", "assistant"] and content:
+                    messages.append({"role": role, "content": content})
+
+        messages.append({"role": "user", "content": prompt})
+
+        # Stream response
+        for chunk in call_claude_streaming(messages):
             yield chunk
 
     except ClientError as e:
