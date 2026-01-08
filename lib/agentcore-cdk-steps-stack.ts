@@ -70,37 +70,6 @@ export class AgentCoreCdkStepsStack extends cdk.Stack {
       resources: ['*']
     }));
 
-    // AgentCore Memory の作成
-    const memory = new agentcore.Memory(this, 'ChatMemory', {
-      memoryName: 'chat_memory_steps',
-      description: 'Memory store for chat conversation history',
-      expirationDuration: cdk.Duration.days(90),
-      memoryStrategies: [
-        agentcore.MemoryStrategy.usingBuiltInSummarization()
-      ]
-    });
-
-    memory.grantWrite(agentRuntime);
-    memory.grantRead(agentRuntime);
-
-    agentRuntime.role.addToPrincipalPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['bedrock-agentcore:ListMemories'],
-      resources: ['*']
-    }));
-
-    agentRuntime.role.addToPrincipalPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'bedrock-agentcore:CreateEvent',
-        'bedrock-agentcore:ListEvents',
-        'bedrock-agentcore:GetMemory',
-        'bedrock-agentcore:RetrieveMemoryRecords',
-        'bedrock-agentcore:ListMemoryRecords'
-      ],
-      resources: [memory.memoryArn, `${memory.memoryArn}/*`]
-    }));
-
     // Cognito User Pool
     const userPool = new cognito.UserPool(this, 'UserPool', {
       userPoolName: `agentcore-steps-${props.environment}`,
@@ -216,11 +185,6 @@ export class AgentCoreCdkStepsStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'IdentityPoolId', {
       value: identityPool.ref,
       description: 'Cognito Identity Pool ID'
-    });
-
-    new cdk.CfnOutput(this, 'MemoryId', {
-      value: memory.memoryId,
-      description: 'AgentCore Memory ID'
     });
 
     new cdk.CfnOutput(this, 'S3BucketName', {

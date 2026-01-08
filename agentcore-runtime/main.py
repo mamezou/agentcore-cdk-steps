@@ -4,15 +4,12 @@ Agent Core Runtime with Bedrock Claude + Tool Use integration
 AWS Bedrock Agent Core Runtime の実装
 - Claude Sonnet 4.5 (JP Inference Profile) との連携
 - Tool Use (Function Calling) による外部API連携
-- AgentCore Memory Gateway による会話永続化
 - Built-in Tools (Code Interpreter) の活用
 - ストリーミングレスポンス対応
 """
 import json
 import logging
 from typing import Any
-from datetime import datetime
-import uuid
 
 import boto3
 from botocore.exceptions import ClientError
@@ -28,14 +25,9 @@ app = BedrockAgentCoreApp()
 bedrock_client = boto3.client('bedrock-runtime', region_name='ap-northeast-1')
 service_quotas_client = boto3.client('service-quotas', region_name='ap-northeast-1')
 agentcore_client = boto3.client('bedrock-agentcore', region_name='ap-northeast-1')
-agentcore_control_client = boto3.client('bedrock-agentcore-control', region_name='ap-northeast-1')
 
 # Claude モデル設定 (JP Inference Profile)
 MODEL_ID = "jp.anthropic.claude-sonnet-4-5-20250929-v1:0"
-
-# Memory 設定
-MEMORY_NAME = "chat_memory"
-_memory_id_cache = None
 
 # システムプロンプト
 SYSTEM_PROMPT = """あなたは AWS のエキスパートアシスタントです。
@@ -44,10 +36,7 @@ AWS サービスの制限、クォータ、ベストプラクティスについ�
 
 利用可能なツール:
 - get_aws_service_info: AWS Service Quotas API からリアルタイムでクォータ情報を取得
-- execute_code: Python コードを実行（計算、データ処理、可視化など）
-
-あなたは長期記憶を持っています。過去の会話から学んだユーザーの好みや重要な情報を覚えていて、
-適切な場面で活用してください。"""
+- execute_code: Python コードを実行（計算、データ処理、可視化など）"""
 
 # Tool definitions
 TOOLS = [
@@ -146,121 +135,6 @@ SERVICE_QUOTAS_MAPPING = {
         ]
     },
 }
-
-
-# =============================================================================
-# Memory Functions
-# =============================================================================
-
-def get_memory_id() -> str:
-    """Memory ID を名前から取得（キャッシュ機能付き）"""
-    global _memory_id_cache
-    if _memory_id_cache:
-        return _memory_id_cache
-
-    try:
-        response = agentcore_control_client.list_memories()
-        for mem in response.get('memories', []):
-            mem_id = mem.get('id', '')
-            if mem_id.startswith(MEMORY_NAME):
-                _memory_id_cache = mem_id
-                logger.info(f"Found memory ID: {_memory_id_cache}")
-                return _memory_id_cache
-        logger.warning(f"Memory with prefix '{MEMORY_NAME}' not found")
-        return None
-    except Exception as e:
-        logger.error(f"Error getting memory ID: {e}")
-        return None
-
-
-def sanitize_actor_id(actor_id: str) -> str:
-    """Sanitize actor_id to match AWS pattern"""
-    return actor_id.replace('@', '_at_').replace('.', '_')
-
-
-def save_to_memory(actor_id: str, session_id: str, role: str, content: str):
-    """Save a conversation turn to Memory"""
-    memory_id = get_memory_id()
-    if not memory_id:
-        logger.warning("Memory not available, skipping save")
-        return
-
-    try:
-        memory_role = "USER" if role == "user" else "ASSISTANT"
-        safe_actor_id = sanitize_actor_id(actor_id)
-
-        agentcore_client.create_event(
-            memoryId=memory_id,
-            actorId=safe_actor_id,
-            sessionId=session_id,
-            eventTimestamp=datetime.utcnow(),
-            clientToken=str(uuid.uuid4()),
-            payload=[{
-                'conversational': {
-                    'content': {'text': content},
-                    'role': memory_role
-                }
-            }]
-        )
-        logger.info(f"Saved to memory: {role} message for actor={safe_actor_id}")
-    except Exception as e:
-        logger.error(f"Error saving to memory: {e}")
-
-
-def get_strategy_id() -> str:
-    """Get the strategy ID dynamically from memory configuration"""
-    memory_id = get_memory_id()
-    if not memory_id:
-        return None
-    
-    try:
-        response = agentcore_control_client.get_memory(memoryId=memory_id)
-        strategies = response.get('memory', {}).get('strategies', [])
-        for strategy in strategies:
-            if strategy.get('type') == 'SUMMARIZATION':
-                return strategy.get('strategyId')
-        return None
-    except Exception as e:
-        logger.warning(f"Error getting strategy ID: {e}")
-        return None
-
-
-def search_long_term_memory(actor_id: str, query: str, top_k: int = 5) -> str:
-    """Search long-term memory for relevant information"""
-    memory_id = get_memory_id()
-    if not memory_id:
-        return ""
-
-    strategy_id = get_strategy_id()
-    if not strategy_id:
-        logger.warning("Strategy ID not found, skipping long-term memory search")
-        return ""
-
-    try:
-        safe_actor_id = sanitize_actor_id(actor_id)
-        namespace_prefix = f"/strategies/{strategy_id}/actors/{safe_actor_id}"
-
-        response = agentcore_client.retrieve_memory_records(
-            memoryId=memory_id,
-            namespace=namespace_prefix,
-            searchCriteria={'searchQuery': query, 'topK': top_k},
-            maxResults=top_k
-        )
-
-        results = []
-        for record in response.get('memoryRecordSummaries', []):
-            content = record.get('content', {})
-            text = content.get('text', '') if isinstance(content, dict) else str(content)
-            if text:
-                results.append(text)
-
-        if results:
-            logger.info(f"Found {len(results)} long-term memory records")
-            return "\n".join(results)
-        return ""
-    except Exception as e:
-        logger.warning(f"Long-term memory search error: {e}")
-        return ""
 
 
 # =============================================================================
@@ -527,8 +401,6 @@ def process_conversation_streaming(prompt: str, history: list = None):
 async def agent_handler(request: dict):
     """Agent Core Runtime handler"""
     prompt = request.get('prompt', '')
-    session_id = request.get('sessionId', '')
-    actor_id = request.get('actorId', 'default-user')
     history = request.get('history', [])
 
     logger.info(f"Received request - prompt: {prompt[:100] if prompt else 'empty'}...")
@@ -538,28 +410,8 @@ async def agent_handler(request: dict):
         return
 
     try:
-        save_to_memory(actor_id, session_id, "user", prompt)
-
-        long_term_context = search_long_term_memory(actor_id, prompt)
-        enhanced_history = []
-
-        if long_term_context:
-            enhanced_history.append({
-                "role": "assistant",
-                "content": f"[過去の会話から覚えていること]\n{long_term_context}"
-            })
-
-        if history:
-            enhanced_history.extend(history)
-
-        response_chunks = []
-        for chunk in process_conversation_streaming(prompt, enhanced_history):
-            response_chunks.append(chunk)
+        for chunk in process_conversation_streaming(prompt, history):
             yield chunk
-
-        full_response = "".join(response_chunks)
-        if full_response:
-            save_to_memory(actor_id, session_id, "assistant", full_response)
 
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code', 'Unknown')
