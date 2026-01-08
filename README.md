@@ -16,18 +16,17 @@ AWS Bedrock AgentCore を段階的に学べるチュートリアルリポジト�
 
 ## 学習ステップ
 
-このリポジトリは段階的に学べるようタグ付けされています。
+このリポジトリは段階的に学べるようブランチ分けされています。
 
-| ステップ | タグ | 学べること | 追加内容 |
-|---------|------|-----------|----------|
-| 1 | `v0.1-claude-streaming` | Runtime + Claude + ストリーミング | 基本構成、モデル呼び出し、履歴、streaming |
+| ステップ | ブランチ | 学べること | 追加内容 |
+|---------|---------|-----------|----------|
+| 1 | `step/v0.1-claude-streaming` | Runtime + Claude + ストリーミング | 基本構成、モデル呼び出し、履歴、streaming |
 
 ### 各ステップの確認方法
 
 ```bash
 # 例: 基本構成を確認
-git checkout v0.1-claude-streaming
-cat README.md
+git checkout step/v0.1-claude-streaming
 
 # 最新版に戻る
 git checkout main
