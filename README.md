@@ -18,19 +18,18 @@ AWS Bedrock AgentCore を段階的に学べるチュートリアルリポジト�
 
 ## 学習ステップ
 
-このリポジトリは段階的に学べるようタグ付けされています。
+このリポジトリは段階的に学べるようブランチ分けされています。
 
-| ステップ | タグ | 学べること | 追加内容 |
-|---------|------|-----------|----------|
-| 1 | `v0.1-claude-streaming` | Runtime + Claude + ストリーミング | 基本構成、モデル呼び出し、履歴、streaming |
-| 2 | `v0.2-tool-use` | Tool Use + 外部API連携 | Service Quotas API |
+| ステップ | ブランチ | 学べること | 追加内容 |
+|---------|---------|-----------|----------|
+| 1 | `step/v0.1-claude-streaming` | Runtime + Claude + ストリーミング | 基本構成、モデル呼び出し、履歴、streaming |
+| 2 | `step/v0.2-tool-use` | Tool Use + 外部API連携 | Service Quotas API |
 
 ### 各ステップの確認方法
 
 ```bash
 # 例: 基本構成を確認
-git checkout v0.1-claude-streaming
-cat README.md
+git checkout step/v0.1-claude-streaming
 
 # 最新版に戻る
 git checkout main
@@ -39,11 +38,7 @@ git checkout main
 ### ステップ間の差分確認
 
 ```bash
-# ステップ間の差分を確認
-git diff v0.1-claude-streaming v0.2-tool-use
-
-# 特定ファイルの変更を確認
-git diff v0.2-tool-use v0.3-code-interpreter -- agentcore-runtime/main.py
+git diff step/v0.1-claude-streaming step/v0.2-tool-use -- agentcore-runtime/main.py
 ```
 
 ## 機能

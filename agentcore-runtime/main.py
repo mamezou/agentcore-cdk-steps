@@ -4,7 +4,6 @@ Agent Core Runtime with Bedrock Claude + Tool Use integration
 AWS Bedrock Agent Core Runtime の実装
 - Claude Sonnet 4.5 (JP Inference Profile) との連携
 - Tool Use (Function Calling) による外部API連携
-- Built-in Tools (Code Interpreter) の活用
 - ストリーミングレスポンス対応
 """
 import json
