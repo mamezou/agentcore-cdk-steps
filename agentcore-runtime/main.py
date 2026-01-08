@@ -5,7 +5,7 @@ AWS Bedrock Agent Core Runtime の実装
 - Claude Sonnet 4.5 (JP Inference Profile) との連携
 - Tool Use (Function Calling) による外部API連携
 - AgentCore Memory Gateway による会話永続化
-- Built-in Tools (Code Interpreter, Browser Tool) の活用
+- Built-in Tools (Code Interpreter) の活用
 - ストリーミングレスポンス対応
 """
 import json
@@ -13,7 +13,6 @@ import logging
 from typing import Any
 from datetime import datetime
 import uuid
-import concurrent.futures
 
 import boto3
 from botocore.exceptions import ClientError
@@ -46,12 +45,6 @@ AWS サービスの制限、クォータ、ベストプラクティスについ�
 利用可能なツール:
 - get_aws_service_info: AWS Service Quotas API からリアルタイムでクォータ情報を取得
 - execute_code: Python コードを実行（計算、データ処理、可視化など）
-- browse_web: Webページにアクセスしてコンテンツを取得
-
-クォータ情報は get_aws_service_info ツールで取得してください。
-ベストプラクティスについては、あなたの知識を元に回答してください。
-Webページの情報が必要な場合は browse_web ツールを使ってください。
-特にガバメントクラウド（GCAS）のガイドラインは https://guide.gcas.cloud.go.jp/ から取得できます。
 
 あなたは長期記憶を持っています。過去の会話から学んだユーザーの好みや重要な情報を覚えていて、
 適切な場面で活用してください。"""
@@ -89,28 +82,6 @@ Amazon Bedrock AgentCore Code Interpreter を使用。
                 }
             },
             "required": ["code"]
-        }
-    },
-    {
-        "name": "browse_web",
-        "description": """Webページにアクセスしてコンテンツを取得します。
-Amazon Bedrock AgentCore Browser を使用。
-認証が必要なページにはアクセスできません。""",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "アクセスするWebページのURL"
-                },
-                "extract_type": {
-                    "type": "string",
-                    "enum": ["text", "html", "screenshot"],
-                    "description": "取得するコンテンツの種類 (デフォルト: text)",
-                    "default": "text"
-                }
-            },
-            "required": ["url"]
         }
     }
 ]
@@ -421,59 +392,6 @@ def execute_code(code: str) -> dict:
                 logger.warning(f"Failed to stop session {session_id}: {e}")
 
 
-def browse_web(url: str, extract_type: str = "text") -> dict:
-    """Browse a web page using AgentCore Browser"""
-
-    def _browse_in_thread(url: str, extract_type: str) -> dict:
-        try:
-            from bedrock_agentcore.tools.browser_client import browser_session
-            from playwright.sync_api import sync_playwright
-
-            logger.info(f"Starting browser session for URL: {url}")
-
-            with browser_session('ap-northeast-1') as client:
-                ws_url, headers = client.generate_ws_headers()
-
-                with sync_playwright() as playwright:
-                    browser = playwright.chromium.connect_over_cdp(ws_url, headers=headers)
-                    context = browser.contexts[0]
-                    page = context.pages[0] if context.pages else context.new_page()
-
-                    page.goto(url, wait_until='networkidle', timeout=30000)
-                    page.wait_for_load_state('domcontentloaded')
-
-                    if extract_type == "text":
-                        content = page.inner_text('body')
-                        if len(content) > 10000:
-                            content = content[:10000] + "\n...(truncated)"
-                        return {"success": True, "url": url, "title": page.title(), "content": content}
-                    elif extract_type == "html":
-                        content = page.content()
-                        if len(content) > 20000:
-                            content = content[:20000] + "\n...(truncated)"
-                        return {"success": True, "url": url, "title": page.title(), "html": content}
-                    else:
-                        screenshot = page.screenshot(type='png')
-                        import base64
-                        screenshot_b64 = base64.b64encode(screenshot).decode('utf-8')
-                        return {"success": True, "url": url, "title": page.title(), "screenshot_base64": screenshot_b64[:1000] + "..."}
-
-        except ImportError as e:
-            return {"success": False, "error": f"依存関係が不足: {str(e)}"}
-        except Exception as e:
-            logger.error(f"Error in browse_web: {e}")
-            return {"success": False, "error": f"Webページ取得エラー: {str(e)}"}
-
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_browse_in_thread, url, extract_type)
-            return future.result(timeout=60)
-    except concurrent.futures.TimeoutError:
-        return {"success": False, "error": "タイムアウト（60秒）"}
-    except Exception as e:
-        return {"success": False, "error": f"エラー: {str(e)}"}
-
-
 def execute_tool(tool_name: str, tool_input: dict) -> Any:
     """Execute a tool and return the result"""
     logger.info(f"Executing tool: {tool_name}")
@@ -482,8 +400,6 @@ def execute_tool(tool_name: str, tool_input: dict) -> Any:
         return get_aws_service_info(service_name=tool_input.get("service_name", ""))
     elif tool_name == "execute_code":
         return execute_code(code=tool_input.get("code", ""))
-    elif tool_name == "browse_web":
-        return browse_web(url=tool_input.get("url", ""), extract_type=tool_input.get("extract_type", "text"))
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 

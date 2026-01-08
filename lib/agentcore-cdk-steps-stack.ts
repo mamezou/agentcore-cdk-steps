@@ -70,20 +70,6 @@ export class AgentCoreCdkStepsStack extends cdk.Stack {
       resources: ['*']
     }));
 
-    // Browser Tool へのアクセス権限
-    agentRuntime.role.addToPrincipalPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'bedrock-agentcore:StartBrowserSession',
-        'bedrock-agentcore:GetBrowserSession',
-        'bedrock-agentcore:StopBrowserSession',
-        'bedrock-agentcore:UpdateBrowserStream',
-        'bedrock-agentcore:ConnectBrowserAutomationStream',
-        'bedrock-agentcore:ConnectBrowserLiveViewStream'
-      ],
-      resources: ['*']
-    }));
-
     // AgentCore Memory の作成
     const memory = new agentcore.Memory(this, 'ChatMemory', {
       memoryName: 'chat_memory_steps',
