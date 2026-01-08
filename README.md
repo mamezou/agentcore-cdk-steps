@@ -12,7 +12,6 @@ AWS Bedrock AgentCore を段階的に学べるチュートリアルリポジト�
 │             │     │  │  - Claude Sonnet 4.5 (JP Inference Profile)    │  │
 │             │     │  │  - Custom Tools:                               │  │
 │             │     │  │    - get_aws_service_info (Service Quotas API) │  │
-│             │     │  │    - get_aws_news (RSS)                        │  │
 │             │     │  │    - execute_code (Code Interpreter)           │  │
 │             │     │  └────────────────────────────────────────────────┘  │
 │             │     │                        │                             │
@@ -34,7 +33,7 @@ AWS Bedrock AgentCore を段階的に学べるチュートリアルリポジト�
 | ステップ | タグ | 学べること | 追加内容 |
 |---------|------|-----------|----------|
 | 1 | `v0.1-claude-streaming` | Runtime + Claude + ストリーミング | 基本構成、モデル呼び出し、履歴、streaming |
-| 2 | `v0.2-tool-use` | Tool Use + 外部API連携 | Service Quotas API、ニュース取得 |
+| 2 | `v0.2-tool-use` | Tool Use + 外部API連携 | Service Quotas API |
 | 3 | `v0.3-code-interpreter` | Code Interpreter | execute_code ツール |
 | 4 | `v0.4-memory-gateway` | Memory Gateway | 長期記憶 |
 | 5 | `v0.5-browser-tool` | Browser Tool | Web閲覧 |
@@ -69,7 +68,6 @@ git diff v0.2-tool-use v0.3-code-interpreter -- agentcore-runtime/main.py
 
 ### Custom Tools (Tool Use)
 - **get_aws_service_info**: Service Quotas API でアカウント固有のクォータ値を取得
-- **get_aws_news**: AWS What's New RSS フィードから最新情報を取得
 - **execute_code**: Code Interpreter でPythonコードを実行
 - **browse_web**: Browser Tool でWebページのコンテンツを取得
 
@@ -175,12 +173,21 @@ aws cognito-idp admin-set-user-password \
   --username test@example.com \
   --password TestPass123! \
   --permanent
-
-# 8. アクセス確認
-echo "セットアップ完了！"
-echo "Website URL: ${WEBSITE_URL}"
-echo "ログイン情報: test@example.com / TestPass123!"
 ```
+
+## 動作確認
+
+1. ブラウザで Website URL にアクセス
+2. 以下の情報でログイン：
+   - ユーザー名: `test@example.com`
+   - パスワード: `TestPass123!`
+
+### テスト項目
+- **基本チャット**: "こんにちは" と入力
+- **Tool Use**: "このアカウントのLambda同時実行数の上限は？" と入力
+- **Code Interpreter**: "1から100までの素数を列挙して" と入力
+- **Memory Gateway**: "私の好きなAWSサービスは○○です" → （リロードもしくは新しい会話ボタン） → "私の好きなAWSサービスは？" と入力
+- **Browser Tool**: "https://aws.amazon.com/jp/certification/ を要約して" と入力
 
 ### (オプション) スクリプトで環境変数を自動生成
 

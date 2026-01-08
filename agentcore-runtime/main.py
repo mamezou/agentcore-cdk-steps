@@ -45,7 +45,6 @@ AWS サービスの制限、クォータ、ベストプラクティスについ�
 
 利用可能なツール:
 - get_aws_service_info: AWS Service Quotas API からリアルタイムでクォータ情報を取得
-- get_aws_news: AWS の最新ニュース（What's New）を取得
 - execute_code: Python コードを実行（計算、データ処理、可視化など）
 - browse_web: Webページにアクセスしてコンテンツを取得
 
@@ -73,20 +72,6 @@ TOOLS = [
                 }
             },
             "required": ["service_name"]
-        }
-    },
-    {
-        "name": "get_aws_news",
-        "description": "AWS の最新ニュース (What's New) を取得します。",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer",
-                    "description": "取得件数 (デフォルト: 5)",
-                    "default": 5
-                }
-            }
         }
     },
     {
@@ -251,15 +236,38 @@ def save_to_memory(actor_id: str, session_id: str, role: str, content: str):
         logger.error(f"Error saving to memory: {e}")
 
 
+def get_strategy_id() -> str:
+    """Get the strategy ID dynamically from memory configuration"""
+    memory_id = get_memory_id()
+    if not memory_id:
+        return None
+    
+    try:
+        response = agentcore_control_client.get_memory(memoryId=memory_id)
+        strategies = response.get('memory', {}).get('strategies', [])
+        for strategy in strategies:
+            if strategy.get('type') == 'SUMMARIZATION':
+                return strategy.get('strategyId')
+        return None
+    except Exception as e:
+        logger.warning(f"Error getting strategy ID: {e}")
+        return None
+
+
 def search_long_term_memory(actor_id: str, query: str, top_k: int = 5) -> str:
     """Search long-term memory for relevant information"""
     memory_id = get_memory_id()
     if not memory_id:
         return ""
 
+    strategy_id = get_strategy_id()
+    if not strategy_id:
+        logger.warning("Strategy ID not found, skipping long-term memory search")
+        return ""
+
     try:
         safe_actor_id = sanitize_actor_id(actor_id)
-        namespace_prefix = f"/strategies/summary_builtin_cdkGen0001-a8lhF65myb/actors/{safe_actor_id}"
+        namespace_prefix = f"/strategies/{strategy_id}/actors/{safe_actor_id}"
 
         response = agentcore_client.retrieve_memory_records(
             memoryId=memory_id,
@@ -353,31 +361,6 @@ def get_aws_service_info(service_name: str) -> dict:
         return {
             "error": f"サービス '{service_name}' のクォータ情報を取得できませんでした。対応サービス: {', '.join(SERVICE_QUOTAS_MAPPING.keys())}"
         }
-
-
-def get_aws_news(limit: int = 5) -> dict:
-    """Get AWS What's New RSS feed"""
-    try:
-        import feedparser
-        feed_url = "https://aws.amazon.com/about-aws/whats-new/recent/feed/"
-        feed = feedparser.parse(feed_url)
-
-        news_items = []
-        for entry in feed.entries[:limit]:
-            summary = entry.get("summary", "")
-            news_items.append({
-                "title": entry.get("title", ""),
-                "link": entry.get("link", ""),
-                "published": entry.get("published", ""),
-                "summary": summary[:200] + "..." if len(summary) > 200 else summary
-            })
-
-        return {"count": len(news_items), "items": news_items}
-    except ImportError:
-        return {"error": "feedparser がインストールされていません", "items": []}
-    except Exception as e:
-        logger.error(f"Error fetching AWS news: {e}")
-        return {"error": f"ニュース取得エラー: {str(e)}", "items": []}
 
 
 def execute_code(code: str) -> dict:
@@ -497,8 +480,6 @@ def execute_tool(tool_name: str, tool_input: dict) -> Any:
 
     if tool_name == "get_aws_service_info":
         return get_aws_service_info(service_name=tool_input.get("service_name", ""))
-    elif tool_name == "get_aws_news":
-        return get_aws_news(limit=tool_input.get("limit", 5))
     elif tool_name == "execute_code":
         return execute_code(code=tool_input.get("code", ""))
     elif tool_name == "browse_web":
