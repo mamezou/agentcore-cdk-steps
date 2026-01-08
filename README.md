@@ -231,6 +231,12 @@ VITE_AWS_REGION=ap-northeast-1
 | `VITE_AGENT_RUNTIME_ARN` | Agent Core RuntimeのARN | `AgentCoreCdkStepsStack.AgentRuntimeArn` |
 | `VITE_AWS_REGION` | AWSリージョン | 固定値: `ap-northeast-1` |
 
+## クリーンアップ
+
+```bash
+npx cdk destroy
+```
+
 ## ライセンス
 
 MIT
