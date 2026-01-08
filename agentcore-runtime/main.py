@@ -24,7 +24,6 @@ app = BedrockAgentCoreApp()
 # AWS クライアントの初期化
 bedrock_client = boto3.client('bedrock-runtime', region_name='ap-northeast-1')
 service_quotas_client = boto3.client('service-quotas', region_name='ap-northeast-1')
-agentcore_client = boto3.client('bedrock-agentcore', region_name='ap-northeast-1')
 
 # Claude モデル設定 (JP Inference Profile)
 MODEL_ID = "jp.anthropic.claude-sonnet-4-5-20250929-v1:0"
@@ -35,8 +34,7 @@ AWS サービスの制限、クォータ、ベストプラクティスについ�
 日本語で丁寧に回答してください。
 
 利用可能なツール:
-- get_aws_service_info: AWS Service Quotas API からリアルタイムでクォータ情報を取得
-- execute_code: Python コードを実行（計算、データ処理、可視化など）"""
+- get_aws_service_info: AWS Service Quotas API からリアルタイムでクォータ情報を取得"""
 
 # Tool definitions
 TOOLS = [
@@ -54,23 +52,6 @@ TOOLS = [
                 }
             },
             "required": ["service_name"]
-        }
-    },
-    {
-        "name": "execute_code",
-        "description": """Python コードを安全なサンドボックス環境で実行します。
-Amazon Bedrock AgentCore Code Interpreter を使用。
-使用例: 数学的な計算、データ処理、テキスト処理
-注意: print() を使って結果を表示してください。""",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "description": "実行する Python コード"
-                }
-            },
-            "required": ["code"]
         }
     }
 ]
@@ -208,72 +189,12 @@ def get_aws_service_info(service_name: str) -> dict:
         }
 
 
-def execute_code(code: str) -> dict:
-    """Execute Python code using AgentCore Code Interpreter"""
-    session_id = None
-    try:
-        session_response = agentcore_client.start_code_interpreter_session(
-            codeInterpreterIdentifier="aws.codeinterpreter.v1",
-            name="code-session",
-            sessionTimeoutSeconds=900
-        )
-        session_id = session_response["sessionId"]
-        logger.info(f"Started Code Interpreter session: {session_id}")
-
-        execute_response = agentcore_client.invoke_code_interpreter(
-            codeInterpreterIdentifier="aws.codeinterpreter.v1",
-            sessionId=session_id,
-            name="executeCode",
-            arguments={"language": "python", "code": code}
-        )
-
-        output_parts = []
-        error_parts = []
-
-        for event in execute_response.get('stream', []):
-            if 'result' in event:
-                result = event['result']
-                if 'content' in result:
-                    for content_item in result['content']:
-                        if content_item.get('type') == 'text':
-                            output_parts.append(content_item.get('text', ''))
-                        elif content_item.get('type') == 'error':
-                            error_parts.append(content_item.get('text', ''))
-
-        output = '\n'.join(output_parts)
-        errors = '\n'.join(error_parts)
-
-        if errors:
-            return {"success": False, "output": output, "error": errors}
-        return {"success": True, "output": output if output else "(出力なし)"}
-
-    except ClientError as e:
-        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-        error_msg = e.response.get('Error', {}).get('Message', str(e))
-        logger.error(f"Code Interpreter error: {error_code} - {error_msg}")
-        return {"success": False, "error": f"Code Interpreter エラー: {error_code} - {error_msg}"}
-    except Exception as e:
-        logger.error(f"Unexpected error in execute_code: {e}")
-        return {"success": False, "error": f"予期せぬエラー: {str(e)}"}
-    finally:
-        if session_id:
-            try:
-                agentcore_client.stop_code_interpreter_session(
-                    codeInterpreterIdentifier="aws.codeinterpreter.v1",
-                    sessionId=session_id
-                )
-            except Exception as e:
-                logger.warning(f"Failed to stop session {session_id}: {e}")
-
-
 def execute_tool(tool_name: str, tool_input: dict) -> Any:
     """Execute a tool and return the result"""
     logger.info(f"Executing tool: {tool_name}")
 
     if tool_name == "get_aws_service_info":
         return get_aws_service_info(service_name=tool_input.get("service_name", ""))
-    elif tool_name == "execute_code":
-        return execute_code(code=tool_input.get("code", ""))
     else:
         return {"error": f"Unknown tool: {tool_name}"}
 

@@ -59,17 +59,6 @@ export class AgentCoreCdkStepsStack extends cdk.Stack {
       resources: ['*']
     }));
 
-    // Code Interpreter へのアクセス権限
-    agentRuntime.role.addToPrincipalPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'bedrock-agentcore:StartCodeInterpreterSession',
-        'bedrock-agentcore:InvokeCodeInterpreter',
-        'bedrock-agentcore:StopCodeInterpreterSession'
-      ],
-      resources: ['*']
-    }));
-
     // Cognito User Pool
     const userPool = new cognito.UserPool(this, 'UserPool', {
       userPoolName: `agentcore-steps-${props.environment}`,
