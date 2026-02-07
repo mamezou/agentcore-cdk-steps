@@ -2,6 +2,8 @@
 
 AWS Bedrock AgentCore を段階的に学べるチュートリアルリポジトリです。
 
+参考ブログ：https://abillyz.com/mamezou/studies/1158
+
 ## アーキテクチャ
 
 ```
