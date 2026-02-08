@@ -224,6 +224,38 @@ VITE_AWS_REGION=ap-northeast-1
 | `VITE_AGENT_RUNTIME_ARN` | Agent Core RuntimeのARN | `AgentCoreCdkStepsStack.AgentRuntimeArn` |
 | `VITE_AWS_REGION` | AWSリージョン | 固定値: `ap-northeast-1` |
 
+## トラブルシューティング
+
+### x86_64/AMD64 環境での Docker ビルドエラー
+
+`cdk deploy` 実行時に Docker ビルドが失敗する場合、ホストマシンのアーキテクチャが原因の可能性があります。
+
+本プロジェクトでは、AgentCore Runtime のコスト効率を考慮して ARM64 (Graviton) アーキテクチャを使用しています。CDK スタック内で `platform: ecr_assets.Platform.LINUX_ARM64` を指定しているため、`cdk deploy` 時に ARM64 用の Docker イメージがビルドされます。
+
+x86_64/AMD64 環境（GitHub Codespaces、一般的なデスクトップ PC など）では、そのままでは ARM64 イメージをビルドできません。
+
+#### アーキテクチャの確認
+
+```bash
+uname -m
+```
+
+出力が `x86_64` または `amd64` の場合、以下の QEMU セットアップが必要です。`aarch64` の場合はセットアップ不要です。
+
+#### QEMU エミュレーションのセットアップ
+
+Docker が起動していることを確認した上で、以下のコマンドを実行してください:
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install all
+```
+
+これにより、x86_64 環境上で ARM64 Docker イメージをビルドできるようになります。
+
+> **注意:** この設定は Docker デーモンを再起動すると失われます。Docker を再起動した場合は、`cdk deploy` の前に再度上記コマンドを実行してください。
+
+セットアップ完了後、通常通り `npx cdk deploy` を実行できます。
+
 ## ライセンス
 
 MIT
